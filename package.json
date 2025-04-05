@@ -1,0 +1,23 @@
+{
+  "name": "eclectech",
+  "version": "1.0.0",
+  "description": "more accessible websites",
+  "keywords": [
+    "accessibility"
+  ],
+  "homepage": "https://github.com/hmac213/sf-access#readme",
+  "bugs": {
+    "url": "https://github.com/hmac213/sf-access/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hmac213/sf-access.git"
+  },
+  "license": "ISC",
+  "author": "Henry and Matthew",
+  "type": "commonjs",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  }
+}
