@@ -28,6 +28,10 @@ class EclectechElement extends HTMLElement {
     }
     
     async processAccessibilitySettings() {
+        if (window.__geminiInitialized) {
+            this.hideLoading();
+            return;
+        }
         this.showLoading();
         await moduleLoadPromise; // Ensure the accessibility module is loaded
 
@@ -39,6 +43,9 @@ class EclectechElement extends HTMLElement {
         if (this.hasAttribute('enable-high-contrast')) {
             activeAttributes.push('enable-high-contrast');
         }
+        if (this.hasAttribute('enable-screen-reader')) {
+            activeAttributes.push('enable-screen-reader');
+        }
 
         // If no accessibility attributes are active, hide loading and exit
         if (activeAttributes.length === 0) {
@@ -46,14 +53,12 @@ class EclectechElement extends HTMLElement {
             return;
         }
 
-        console.log(activeAttributes);
-
         // Check if a cached version exists
         let cachedHtml = localStorage.getItem('accessibilityHtml');
         if (cachedHtml && cachedHtml.length > 100) {
-            console.log('cached html exists uh oh')
             try {
                 document.documentElement.innerHTML = cachedHtml;
+                window.__geminiInitialized = true;
                 setTimeout(() => {
                     this.initializeAccessButton();
                     this.createLoadingOverlay();
@@ -69,6 +74,7 @@ class EclectechElement extends HTMLElement {
         const freshHtml = await apply_changes(this.renderedHTML, activeAttributes);
         if (freshHtml) {
             document.documentElement.innerHTML = freshHtml;
+            window.__geminiInitialized = true;
             setTimeout(() => {
                 this.initializeAccessButton();
                 this.createLoadingOverlay();
@@ -80,7 +86,8 @@ class EclectechElement extends HTMLElement {
     }
 
     initializeAccessButton() {
-        
+        if (document.querySelector('.eclectech-access-button')) return;
+
         // Create accessibility button container
         this.accessButton = document.createElement('div');
         this.accessButton.className = 'eclectech-access-button';
@@ -160,7 +167,7 @@ class EclectechElement extends HTMLElement {
         console.log(JSON.stringify(currentConfig));  
         const configParam = encodeURIComponent(JSON.stringify(currentConfig));
 
-        const configUrl = `https://Eqlectech.vercel.app` + 
+        const configUrl = `https://Eqlectech.vercel.app/config` + 
         `?site=${encodeURIComponent(originSite)}` +
         `&path=${encodeURIComponent(currentPath)}` +
         `&config=${configParam}`;
@@ -179,6 +186,8 @@ class EclectechElement extends HTMLElement {
     }
 
     createLoadingOverlay() {
+        if (document.querySelector('.eclectech-loading-overlay')) return;
+
         // Create loading overlay
         this.loadingOverlay = document.createElement('div');
         this.loadingOverlay.className = 'eclectech-loading-overlay';
