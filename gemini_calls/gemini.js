@@ -6,12 +6,14 @@ const ai = new GoogleGenAI({ apiKey: "AIzaSyCxBemsoT7w_2ANAO0FYVMrZaccR9nlRxo" }
 
 const attribute_prompts = {
   'enable-large-font' : 'Increase the font size of all text in this html to be more accessible for readers who require larger fonts:',
-  'enable-high-contrast' : 'Change the colors of this HTML page to be high contrast:'
+  'enable-high-contrast' : 'Change the colors of this HTML page to be high contrast:',
+  'enable-screen-reader' : 'Optimize all html for screen readers, using aria-labels and similar tools when necessary. do not make any visual changes:'
 }
 
 export default async function apply_changes(renderedHTML, attributes) {
   const keys = attributes.filter(key => attribute_prompts.hasOwnProperty(key));
   for (const key of keys) {
+    console.log(`Starting gemini run for ${key}`);
     const prompt = `${attribute_prompts[key]}
       ${renderedHTML}`
     try {
