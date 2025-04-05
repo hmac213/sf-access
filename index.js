@@ -1,53 +1,18 @@
 // Import statement moved outside class to ensure proper module loading
 let large_font_access;
-let moduleLoaded = false;
-let fontAccessInProgress = false; // Add global flag to track in-progress operations
+let high_contrast_access;
+let largeFontAccessInProgress = false; // Add global flag to track in-progress operations
+let contrastAccessInProgress = false;
 
-// Create a promise to track when the module is loaded
-const moduleLoadPromise = new Promise((resolve, reject) => {
-    try {
-        console.log('[EclectechElement] Attempting to import large_font_access');
-        import('./gemini_calls/large_font.js')
-            .then(module => {
-                console.log('[EclectechElement] Successfully imported large_font_access module');
-                large_font_access = module.default;
-                moduleLoaded = true;
-                resolve(module.default);
-                
-                // Check if we have any pending font access requests
-                const element = document.querySelector('eclec-tech');
-                if (element && element._pendingFontAccess && !fontAccessInProgress) {
-                    console.log('[EclectechElement] Processing pending font access request');
-                    element.enableLargeFontAccess();
-                }
-            })
-            .catch(error => {
-                console.error('[EclectechElement] Error importing large_font_access:', error);
-                reject(error);
-            });
-    } catch (error) {
-        console.error('[EclectechElement] Critical error with import syntax:', error);
-        reject(error);
-    }
+const moduleLoadPromise = Promise.all([
+    import('./gemini_calls/large_font.js'),
+    import('./gemini_calls/high_contrast.js')
+]).then(([largeModule, highModule]) => {
+    large_font_access = largeModule.default;
+    high_contrast_access = highModule.default;
+}).catch(error => {
+    console.error('[EclectechElement] Error loading modules:', error);
 });
-
-// Check for cached HTML
-const cachedHtml = localStorage.getItem('largeFontHtml');
-const hasCachedHtml = !!cachedHtml && cachedHtml.length > 100;
-console.log('[EclectechElement] Cached HTML in localStorage?', hasCachedHtml, 'Length:', cachedHtml ? cachedHtml.length : 0);
-
-// Clear any existing session data on page load to ensure font processing happens
-// But only if there's no valid cached result
-if (!hasCachedHtml) {
-    console.log('[EclectechElement] No valid cache found, clearing session storage');
-    sessionStorage.removeItem('largeFontUpdated');
-} else {
-    console.log('[EclectechElement] Valid cache found, keeping session storage');
-}
-
-// Check what's in session storage
-const alreadyUpdated = sessionStorage.getItem('largeFontUpdated') === 'true';
-console.log('[EclectechElement] Session storage has largeFontUpdated?', alreadyUpdated);
 
 class EclectechElement extends HTMLElement {
     constructor() {
@@ -56,24 +21,68 @@ class EclectechElement extends HTMLElement {
         this.renderedHTML = undefined;
         this.accessButton = null;
         this._pendingFontAccess = false;
+        this._pendingContrastAccess = false;
         this._fontAccessInProgress = false; // Add instance level tracking
+        this._contrastAccessInProgress = false;
         this.loadingOverlay = null; // Reference to loading overlay element
         this.initializeAccessButton();
         this.createLoadingOverlay(); // Create loading overlay
     }
 
     connectedCallback() {
-        console.log('[EclectechElement] Connected to DOM');
         window.requestAnimationFrame(() => {
-            console.log('[EclectechElement] First render frame');
             this.renderedHTML = document.documentElement.innerHTML;
-            
-            console.log('[EclectechElement] Checking for enable-large-font attribute:', this.hasAttribute('enable-large-font'));
-            if (this.hasAttribute('enable-large-font')) {
-                console.log('[EclectechElement] enable-large-font attribute found, calling enableLargeFontAccess()');
-                this.enableLargeFontAccess();
-            }
+            this.processAccessibilitySettings();
         });
+    }
+    
+    async processAccessibilitySettings() {
+        this.showLoading();
+        await moduleLoadPromise; // Ensure modules are loaded first
+        
+        // Define a dynamic collection of accessibility endpoints
+        const accessibilityEndpoints = [
+            { attr: 'enable-large-font', sessionKey: 'largeFontUpdated', cacheKey: 'largeFontHtml', moduleFunction: large_font_access },
+            { attr: 'enable-high-contrast', sessionKey: 'highContrastUpdated', cacheKey: 'highContrastHtml', moduleFunction: high_contrast_access }
+            // Additional endpoints can be added here
+        ];
+        
+        // Filter endpoints based on whether the attribute exists and moduleFunction is defined
+        const endpoints = accessibilityEndpoints.filter(ep => this.hasAttribute(ep.attr) && typeof ep.moduleFunction === 'function');
+        
+        // Process all defined endpoints concurrently
+        await Promise.all(endpoints.map(ep => this.processAccessibility(ep)));
+        
+        this.hideLoading();
+    }
+
+    async processAccessibility(endpoint) {
+        // endpoint contains: { sessionKey, cacheKey, moduleFunction }
+        if (sessionStorage.getItem(endpoint.sessionKey) === 'true') return;
+        sessionStorage.setItem(endpoint.sessionKey, 'true');
+        
+        let cachedHtml = localStorage.getItem(endpoint.cacheKey);
+        if (cachedHtml && cachedHtml.length > 100) {
+            try {
+                document.documentElement.innerHTML = cachedHtml;
+                setTimeout(() => {
+                    this.initializeAccessButton();
+                    this.createLoadingOverlay();
+                }, 100);
+                return;
+            } catch (error) {
+                localStorage.removeItem(endpoint.cacheKey);
+            }
+        }
+        const freshHtml = await this.applyFreshAccessibility(endpoint.moduleFunction, this.renderedHTML);
+        if (freshHtml) {
+            document.documentElement.innerHTML = freshHtml;
+            setTimeout(() => {
+                this.initializeAccessButton();
+                this.createLoadingOverlay();
+                localStorage.setItem(endpoint.cacheKey, freshHtml);
+            }, 100);
+        }
     }
 
     initializeAccessButton() {
@@ -299,171 +308,6 @@ class EclectechElement extends HTMLElement {
             console.log('[EclectechElement] Loading overlay hidden');
         }
     }
-
-    async enableLargeFontAccess() {
-        console.log('[EclectechElement] Starting enableLargeFontAccess()');
-        
-        // Prevent multiple simultaneous calls
-        if (fontAccessInProgress || this._fontAccessInProgress) {
-            console.log('[EclectechElement] Font access already in progress, not starting another instance');
-            return;
-        }
-        
-        // Set flags to prevent duplicate calls
-        fontAccessInProgress = true;
-        this._fontAccessInProgress = true;
-        
-        // Show loading overlay
-        this.showLoading();
-        
-        // Log initial font sizes for reference
-        this.logFontSizes('[BEFORE]');
-        
-        // Check if we've already updated the page in this session (early check)
-        const alreadyUpdated = sessionStorage.getItem('largeFontUpdated') === 'true';
-        console.log('[EclectechElement] Already updated in this session? (early check)', alreadyUpdated);
-        
-        if (alreadyUpdated) {
-            console.log('[EclectechElement] Skipping font update as it was already applied in this session');
-            // Reset flags before exiting
-            fontAccessInProgress = false;
-            this._fontAccessInProgress = false;
-            this.hideLoading(); // Ensure loading overlay is hidden
-            return;
-        }
-        
-        // Immediately mark as updated to prevent multiple concurrent calls
-        sessionStorage.setItem('largeFontUpdated', 'true');
-        
-        // Wait for the module to be loaded first, even if we're using cached content
-        try {
-            await moduleLoadPromise;
-            console.log('[EclectechElement] Module is loaded, proceeding with font access');
-        } catch (error) {
-            console.error('[EclectechElement] Module failed to load, cannot continue:', error);
-            // Reset flags before exiting
-            fontAccessInProgress = false;
-            this._fontAccessInProgress = false;
-            this.hideLoading(); // Ensure loading overlay is hidden
-            return;
-        }
-        
-        // Explicitly log storage state
-        this.logStorageState();
-    
-        // Check if we already have a cached result
-        const cachedHtml = localStorage.getItem('largeFontHtml');
-        const hasCachedHtml = !!cachedHtml && cachedHtml.length > 100;
-        console.log('[EclectechElement] Cached HTML found?', hasCachedHtml);
-        
-        try {
-            if (hasCachedHtml) {
-                console.log('[EclectechElement] Applying cached large font HTML, cache length:', cachedHtml.length);
-                try {
-                    document.documentElement.innerHTML = cachedHtml;
-                    console.log('[EclectechElement] Successfully applied cached HTML');
-                    
-                    // Re-initialize the button since it was lost when HTML was replaced
-                    setTimeout(() => {
-                        this.initializeAccessButton();
-                        this.createLoadingOverlay(); // Recreate loading overlay
-                        this.hideLoading(); // Hide loading overlay
-                        // Log font sizes after applying cached HTML
-                        this.logFontSizes('[AFTER CACHED]');
-                        // Reset flags
-                        fontAccessInProgress = false;
-                        this._fontAccessInProgress = false;
-                    }, 100);
-                    return;
-                } catch (error) {
-                    console.error('[EclectechElement] Error applying cached HTML:', error);
-                    // If there's an error with the cached version, clear it and try to get a fresh version
-                    localStorage.removeItem('largeFontHtml');
-                    // Fall through to fresh version
-                }
-            } else {
-                console.log('[EclectechElement] No valid cached HTML found');
-            }
-            
-            // No cached version or cache error, try to get a fresh version
-            await this.applyFreshLargeFont();
-        } finally {
-            // Ensure flags are reset even if errors occur
-            fontAccessInProgress = false;
-            this._fontAccessInProgress = false;
-            this.hideLoading(); // Ensure loading overlay is hidden
-        }
-    }
-    
-    logStorageState() {
-        console.log('[EclectechElement] Storage state:');
-        console.log('- sessionStorage.largeFontUpdated:', sessionStorage.getItem('largeFontUpdated'));
-        
-        const cachedHtml = localStorage.getItem('largeFontHtml');
-        console.log('- localStorage.largeFontHtml present:', !!cachedHtml);
-        console.log('- localStorage.largeFontHtml length:', cachedHtml ? cachedHtml.length : 0);
-    }
-    
-    async applyFreshLargeFont() {
-        console.log('[EclectechElement] Attempting to apply fresh large font');
-        
-        // At this point module should be loaded because of the moduleLoadPromise earlier,
-        // but double-check to be safe
-        if (!large_font_access) {
-            console.error('[EclectechElement] large_font_access function not available yet - this should not happen!');
-            this.hideLoading(); // Hide loading overlay on error
-            return;
-        }
-        
-        try {
-            // Take a snapshot of the current HTML
-            const currentHTML = this.renderedHTML;
-            console.log('[EclectechElement] Calling large_font_access with HTML length:', currentHTML.length);
-            
-            // Call the function with the current HTML
-            let outputHtml = await large_font_access(currentHTML);
-            console.log('[EclectechElement] Received response from large_font_access');
-            
-            if (!outputHtml) {
-                console.error('[EclectechElement] Received empty response from large_font_access');
-                this.hideLoading(); // Hide loading overlay on error
-                return;
-            }
-            
-            outputHtml = outputHtml
-                .replace(/^```html\s*/, '')
-                .replace(/```\s*$/, '');
-            
-            console.log('[EclectechElement] Processed HTML length:', outputHtml.length);
-            
-            if (outputHtml.length < 100) {
-                console.error('[EclectechElement] Received suspiciously short HTML:', outputHtml);
-                this.hideLoading(); // Hide loading overlay on error
-                return;
-            }
-            
-            console.log('[EclectechElement] Applying new large font HTML');
-            document.documentElement.innerHTML = outputHtml;
-            console.log('[EclectechElement] Successfully applied new HTML');
-            
-            // Re-initialize the button since it was lost when HTML was replaced
-            setTimeout(() => {
-                this.initializeAccessButton();
-                this.createLoadingOverlay(); // Recreate loading overlay
-                this.hideLoading(); // Hide loading overlay
-                
-                // Store in localStorage and sessionStorage
-                localStorage.setItem('largeFontHtml', outputHtml);
-                // Note: sessionStorage flag already set at start of process
-                
-                // Log font sizes after applying new HTML
-                this.logFontSizes('[AFTER NEW]');
-            }, 100);
-        } catch (error) {
-            console.error('[EclectechElement] Error in applyFreshLargeFont:', error);
-            this.hideLoading(); // Hide loading overlay on error
-        }
-    }
     
     logFontSizes(label) {
         console.log(`${label} Font sizes:`);
@@ -495,6 +339,19 @@ class EclectechElement extends HTMLElement {
         localStorage.removeItem('largeFontHtml');
         sessionStorage.removeItem('largeFontUpdated');
         location.reload();
+    }
+
+    async applyFreshAccessibility(moduleFunction, htmlSnapshot) {
+        try {
+            let outputHtml = await moduleFunction(htmlSnapshot);
+            if (!outputHtml) return null;
+            // Remove markdown-like formatting if present
+            outputHtml = outputHtml.replace(/^```html\s*/, '').replace(/```\s*$/, '');
+            return outputHtml.length < 100 ? null : outputHtml;
+        } catch (error) {
+            console.error('[EclectechElement] Error in applyFreshAccessibility:', error);
+            return null;
+        }
     }
 }
 
