@@ -193,13 +193,14 @@ class EclectechElement extends HTMLElement {
         const currentPath = window.location.pathname + window.location.search;
         
         const currentConfig = Array.from(this.attributes).reduce((acc, attr) => {
-            acc[attr.name] = attr.value;
+            acc.push(attr.name);
             return acc;
-          }, {});
+          }, []);
         
+        console.log(JSON.stringify(currentConfig));  
         const configParam = encodeURIComponent(JSON.stringify(currentConfig));
 
-        const configUrl = `https://eqlec.tech/config` + 
+        const configUrl = `https://Eqlectech.vercel.app` + 
         `?site=${encodeURIComponent(originSite)}` +
         `&path=${encodeURIComponent(currentPath)}` +
         `&config=${configParam}`;
