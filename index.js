@@ -189,29 +189,34 @@ class EclectechElement extends HTMLElement {
     
     openAccessibilityConfig() {
         // Get the current domain for the default config URL
-        const currentDomain = window.location.hostname;
-        console.log('[EclectechElement] Current domain:', currentDomain);
+        const originSite = window.location.origin;
+        const currentPath = window.location.pathname + window.location.search;
         
-        // Default to accessibility.{currentDomain} or fall back to eclectech.io
-        let defaultConfigUrl;
-        if (currentDomain && currentDomain !== 'localhost') {
-            // For production sites, use a subdomain approach
-            defaultConfigUrl = `https://accessibility.${currentDomain}`;
-        } else {
-            // Default to eclectech.io for local development
-            defaultConfigUrl = 'https://eclectech.io/accessibility-config';
-        }
+        const currentConfig = Array.from(this.attributes).reduce((acc, attr) => {
+            acc[attr.name] = attr.value;
+            return acc;
+          }, {});
         
-        // Get configuration URL from attribute or use the default
-        const configUrl = this.getAttribute('config-url') || defaultConfigUrl;
-        console.log('[EclectechElement] Opening accessibility config at URL:', configUrl);
+        const configParam = encodeURIComponent(JSON.stringify(currentConfig));
+
+        const configUrl = `https://eqlec.tech/config` + 
+        `?site=${encodeURIComponent(originSite)}` +
+        `&path=${encodeURIComponent(currentPath)}` +
+        `&config=${configParam}`;
+
+        const width = 500;
+        const height = 600;
+        const left = (window.innerWidth - width) / 2;
+        const top = (window.innerHeight - height) / 2;
         
-        // Check if the user wants to open in a new tab
-        if (this.hasAttribute('open-in-new-tab')) {
-            window.open(configUrl, '_blank');
-        } else {
-            window.location.href = configUrl;
-        }
+        // Open the popup
+        window.open(
+          configUrl,
+          'AccessibilityConfig',
+          `width=${width},height=${height},top=${top},left=${left},resizable=yes,scrollbars=yes`
+        );
+
+        
     }
 
     createLoadingOverlay() {
