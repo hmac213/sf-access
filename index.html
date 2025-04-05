@@ -3,14 +3,119 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Test</title>
+    <title>Accessibility Tab Demo</title>
     <script type="module" src="index.js"></script>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+        h1 {
+            color: #333;
+        }
+        .demo-section {
+            margin: 2rem 0;
+            padding: 1rem;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+        }
+        button {
+            padding: 0.5rem 1rem;
+            background-color: #3B82F6;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 8px;
+            margin-bottom: 8px;
+        }
+        code {
+            background-color: #f5f5f5;
+            padding: 0.2rem 0.4rem;
+            border-radius: 4px;
+            font-family: monospace;
+        }
+        .position-demo {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+        .position-box {
+            border: 1px dashed #ddd;
+            padding: 16px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .feature-list {
+            list-style-type: none;
+            padding: 0;
+        }
+        .feature-list li {
+            padding: 8px 0;
+            border-bottom: 1px solid #eee;
+        }
+    </style>
 </head>
 <body>
+    <!-- Accessibility tab with default settings -->
     <eclec-tech enable-large-font />
-    <p>Sup Boss! PREEEEECIATE IT!</p>
-    <button>
-        I like buttons.
-    </button>
+    
+    <h1>Accessibility Tab Demo</h1>
+    
+    <div class="demo-section">
+        <h2>Accessibility Tab</h2>
+        <p>The accessibility tab is visible in the corner of the page. Click it to be redirected to the accessibility configuration page.</p>
+        
+        <h3>Default Implementation:</h3>
+        <pre><code>&lt;eclec-tech enable-large-font /&gt;</code></pre>
+    </div>
+    
+    <div class="demo-section">
+        <h2>Position Options</h2>
+        <p>You can position the accessibility tab in different corners using the <code>button-position</code> attribute:</p>
+        
+        <div class="position-demo">
+            <div class="position-box">
+                <h3>Top Left</h3>
+                <pre><code>&lt;eclec-tech button-position="top-left" /&gt;</code></pre>
+            </div>
+            <div class="position-box">
+                <h3>Top Right</h3>
+                <pre><code>&lt;eclec-tech button-position="top-right" /&gt;</code></pre>
+            </div>
+            <div class="position-box">
+                <h3>Bottom Left (Default)</h3>
+                <pre><code>&lt;eclec-tech /&gt;</code></pre>
+            </div>
+            <div class="position-box">
+                <h3>Bottom Right</h3>
+                <pre><code>&lt;eclec-tech button-position="bottom-right" /&gt;</code></pre>
+            </div>
+        </div>
+    </div>
+    
+    <div class="demo-section">
+        <h2>All Configuration Options</h2>
+        <ul class="feature-list">
+            <li><code>enable-large-font</code> - Enable large font accessibility feature</li>
+            <li><code>config-url</code> - Set custom URL for the accessibility configuration page (optional)</li>
+            <li><code>open-in-new-tab</code> - Open configuration in a new tab instead of redirecting</li>
+            <li><code>button-position</code> - Set the position of the accessibility tab (top-left, top-right, bottom-left, bottom-right)</li>
+        </ul>
+    </div>
+    
+    <div class="demo-section">
+        <h2>Coming Soon</h2>
+        <p>Future accessibility features will include:</p>
+        <ul>
+            <li>High contrast mode</li>
+            <li>Screen reader optimizations</li>
+            <li>Motion reduction</li>
+            <li>Font customization</li>
+            <li>Color filters for color blindness</li>
+        </ul>
+    </div>
 </body>
 </html>
