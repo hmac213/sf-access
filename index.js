@@ -24,17 +24,121 @@ class EclectechElement extends HTMLElement {
         window.requestAnimationFrame(() => {
             this.renderedHTML = document.documentElement.innerHTML;
             this.processAccessibilitySettings();
+            console.log('[EclectechElement] HERE');
         });
+    }
+
+    // Static method to parse URL parameters from current window or provided URL
+    static parseQueryParameters(urlString = window.location.href) {
+        console.log('[EclectechElement] Parsing query parameters from:', urlString);
+        
+        try {
+            // Create a URL object from the provided or current URL
+            const url = new URL(urlString);
+            const params = url.searchParams;
+            
+            // Basic parameters
+            const result = {
+                site: params.get('site') || '',
+                path: params.get('path') || '',
+                features: []
+            };
+            
+            
+            // Handle array-format config parameter
+            const configParam = params.get('config');
+            if (configParam) {
+                try {
+                    // Decode and parse
+                    const configData = JSON.parse(decodeURIComponent(configParam));
+                    
+                    // If it's an array, treat each item as a feature name
+                    if (Array.isArray(configData)) {
+                        configData.forEach(feature => {
+                            if (!result.features.includes(feature)) {
+                                result.features.push(feature);
+                            }
+                        });
+                    }
+                } catch (error) {
+                    console.error('[EclectechElement] Error parsing config parameter:', error);
+                }
+            }
+            
+            console.log('[EclectechElement] Parsed parameters:', result);
+            return result;
+        } catch (error) {
+            console.error('[EclectechElement] Error parsing URL parameters:', error);
+            return { site: '', path: '', features: [] };
+        }
+    }
+    
+    // Usage example: 
+    // EclectechElement.parseQueryParameters() - to parse current URL
+    // EclectechElement.parseQueryParameters(someUrl) - to parse a specific URL
+
+    // Remove all accessibility-related attributes from the element
+    removeAllAccessibilityAttributes() {
+        const accessibilityAttributes = [
+            'enable-large-font',
+            'enable-high-contrast',
+            'enable-screen-reader'
+        ];
+        
+        console.log('[EclectechElement] Removing all accessibility attributes');
+        
+        accessibilityAttributes.forEach(attr => {
+            if (this.hasAttribute(attr)) {
+                console.log(`[EclectechElement] Removing attribute: ${attr}`);
+                this.removeAttribute(attr);
+            }
+        });
+        
+        // Clear cached HTML when removing attributes
+        console.log('[EclectechElement] Clearing cached HTML from localStorage');
+        localStorage.removeItem('accessibilityHtml');
+        
+        // Clear the initialization flag to force fresh processing
+        window.__geminiInitialized = false;
+        
+        console.log('[EclectechElement] Attributes after removal:', 
+            Array.from(this.attributes).map(attr => attr.name).join(', '));
     }
     
     async processAccessibilitySettings() {
-        if (window.__geminiInitialized) {
-            this.hideLoading();
-            return;
-        }
-        this.showLoading();
-        await moduleLoadPromise; // Ensure the accessibility module is loaded
+        // Check if we should parse URL parameters for configuration
+        console.log('[EclectechElement] Initial attributes:', 
+            Array.from(this.attributes).map(attr => attr.name).join(', '));
 
+        if (window.location.href.includes('?config')) {
+            console.log('[EclectechElement] Detected configuration page, parsing parameters');
+            const params = EclectechElement.parseQueryParameters();
+            console.log(params);
+            // Use the parsed parameters for configuration
+            console.log('[EclectechElement] Configuration parameters:', params);
+            let config_params = params['features'];
+            
+            console.log(config_params);
+
+            // Remove all existing attributes and clear cached HTML
+            this.removeAllAccessibilityAttributes();
+            
+            // Only set new attributes if config_params has items
+            if (config_params && config_params.length > 0) {
+                console.log('[EclectechElement] Setting new attributes from config parameters:', config_params);
+                config_params.forEach(feature => {
+                    this.setAttribute(feature, 'true');
+                });
+            } else {
+                console.log('[EclectechElement] No features found in config, all attributes removed');
+            }
+            
+            console.log('[EclectechElement] Final attributes:', Array.from(this.attributes).map(attr => attr.name).join(', '));
+        }
+        else {
+            console.log('[EclectechElement] No configuration page detected, using HTML attributes');
+        }
+        
         // Collect active accessibility attributes from the element
         const activeAttributes = [];
         if (this.hasAttribute('enable-large-font')) {
@@ -49,28 +153,39 @@ class EclectechElement extends HTMLElement {
 
         // If no accessibility attributes are active, hide loading and exit
         if (activeAttributes.length === 0) {
+            console.log('[EclectechElement] No active accessibility attributes found, skipping processing');
             this.hideLoading();
             return;
         }
 
-        // Check if a cached version exists
-        let cachedHtml = localStorage.getItem('accessibilityHtml');
-        if (cachedHtml && cachedHtml.length > 100) {
-            try {
-                document.documentElement.innerHTML = cachedHtml;
-                window.__geminiInitialized = true;
-                setTimeout(() => {
-                    this.initializeAccessButton();
-                    this.createLoadingOverlay();
-                }, 100);
-                this.hideLoading();
-                return;
-            } catch (error) {
-                localStorage.removeItem('accessibilityHtml');
+        console.log('[EclectechElement] Active accessibility attributes:', activeAttributes);
+        
+        // Only check cached version if gemini is already initialized and we have attributes
+        if (window.__geminiInitialized && activeAttributes.length > 0) {
+            // Check if a cached version exists
+            let cachedHtml = localStorage.getItem('accessibilityHtml');
+            if (cachedHtml && cachedHtml.length > 100) {
+                try {
+                    console.log('[EclectechElement] Using cached HTML for accessibility features');
+                    document.documentElement.innerHTML = cachedHtml;
+                    setTimeout(() => {
+                        this.initializeAccessButton();
+                        this.createLoadingOverlay();
+                    }, 100);
+                    this.hideLoading();
+                    return;
+                } catch (error) {
+                    console.error('[EclectechElement] Error applying cached HTML:', error);
+                    localStorage.removeItem('accessibilityHtml');
+                }
             }
         }
+        
+        // If we got here, we need to process from scratch
+        this.showLoading();
+        await moduleLoadPromise; // Ensure the accessibility module is loaded
 
-        // Call the gemini function once with all active attributes
+        console.log('[EclectechElement] Calling apply_changes with attributes:', activeAttributes);
         const freshHtml = await apply_changes(this.renderedHTML, activeAttributes);
         if (freshHtml) {
             document.documentElement.innerHTML = freshHtml;
@@ -79,7 +194,10 @@ class EclectechElement extends HTMLElement {
                 this.initializeAccessButton();
                 this.createLoadingOverlay();
                 localStorage.setItem('accessibilityHtml', freshHtml);
+                console.log('[EclectechElement] New HTML cached in localStorage');
             }, 100);
+        } else {
+            console.error('[EclectechElement] apply_changes returned no HTML');
         }
 
         this.hideLoading();
