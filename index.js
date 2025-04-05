@@ -9,6 +9,24 @@ const moduleLoadPromise = import('./gemini_calls/gemini.js')
     console.error('[EclectechElement] Error loading module:', error);
   });
 
+// Setup global event delegation for accessibility button
+document.addEventListener('click', function(event) {
+  // Check if the click was on the accessibility button or its child elements
+  let target = event.target;
+  while (target != null) {
+    if (target.classList && target.classList.contains('eclectech-access-button')) {
+      console.log('[EclectechElement] Accessibility button clicked via delegation');
+      // Find the custom element to call its method
+      const eclecTechElement = document.querySelector('eclec-tech');
+      if (eclecTechElement) {
+        eclecTechElement.openAccessibilityConfig();
+      }
+      break;
+    }
+    target = target.parentElement;
+  }
+}, true);
+
 class EclectechElement extends HTMLElement {
     constructor() {
         super();
@@ -16,13 +34,17 @@ class EclectechElement extends HTMLElement {
         this.renderedHTML = undefined;
         this.accessButton = null;
         this.loadingOverlay = null; // Reference to loading overlay element
+        this.isProcessing = false; // Flag to prevent multiple concurrent processing
         this.initializeAccessButton();
         this.createLoadingOverlay(); // Create loading overlay
     }
 
     connectedCallback() {
         window.requestAnimationFrame(() => {
-            this.renderedHTML = document.documentElement.innerHTML;
+            // Store original HTML before any modifications
+            if (!this.renderedHTML) {
+                this.renderedHTML = document.documentElement.innerHTML;
+            }
             this.processAccessibilitySettings();
             console.log('[EclectechElement] HERE');
         });
@@ -106,109 +128,136 @@ class EclectechElement extends HTMLElement {
     }
     
     async processAccessibilitySettings() {
-        // Check if we should parse URL parameters for configuration
-        console.log('[EclectechElement] Initial attributes:', 
-            Array.from(this.attributes).map(attr => attr.name).join(', '));
-
-        if (window.location.href.includes('?config')) {
-            console.log('[EclectechElement] Detected configuration page, parsing parameters');
-            const params = EclectechElement.parseQueryParameters();
-            console.log(params);
-            // Use the parsed parameters for configuration
-            console.log('[EclectechElement] Configuration parameters:', params);
-            let config_params = params['features'];
-            
-            console.log(config_params);
-
-            // Remove all existing attributes and clear cached HTML
-            this.removeAllAccessibilityAttributes();
-            
-            // Only set new attributes if config_params has items
-            if (config_params && config_params.length > 0) {
-                console.log('[EclectechElement] Setting new attributes from config parameters:', config_params);
-                config_params.forEach(feature => {
-                    this.setAttribute(feature, 'true');
-                });
-            } else {
-                console.log('[EclectechElement] No features found in config, all attributes removed');
-            }
-            
-            console.log('[EclectechElement] Final attributes:', Array.from(this.attributes).map(attr => attr.name).join(', '));
-        }
-        else {
-            console.log('[EclectechElement] No configuration page detected, using HTML attributes');
-        }
-        
-        // Collect active accessibility attributes from the element
-        const activeAttributes = [];
-        if (this.hasAttribute('enable-large-font')) {
-            activeAttributes.push('enable-large-font');
-        }
-        if (this.hasAttribute('enable-high-contrast')) {
-            activeAttributes.push('enable-high-contrast');
-        }
-        if (this.hasAttribute('enable-screen-reader')) {
-            activeAttributes.push('enable-screen-reader');
-        }
-
-        // If no accessibility attributes are active, hide loading and exit
-        if (activeAttributes.length === 0) {
-            console.log('[EclectechElement] No active accessibility attributes found, skipping processing');
-            this.hideLoading();
+        // Prevent concurrent processing
+        if (this.isProcessing) {
+            console.log('[EclectechElement] Already processing, skipping duplicate call');
             return;
         }
-
-        console.log('[EclectechElement] Active accessibility attributes:', activeAttributes);
         
-        // Only check cached version if gemini is already initialized and we have attributes
-        if (window.__geminiInitialized && activeAttributes.length > 0) {
-            // Check if a cached version exists
-            let cachedHtml = localStorage.getItem('accessibilityHtml');
-            if (cachedHtml && cachedHtml.length > 100) {
-                try {
-                    console.log('[EclectechElement] Using cached HTML for accessibility features');
-                    document.documentElement.innerHTML = cachedHtml;
-                    setTimeout(() => {
-                        this.initializeAccessButton();
-                        this.createLoadingOverlay();
-                    }, 100);
-                    this.hideLoading();
-                    return;
-                } catch (error) {
-                    console.error('[EclectechElement] Error applying cached HTML:', error);
-                    localStorage.removeItem('accessibilityHtml');
+        this.isProcessing = true;
+        
+        try {
+            // Check if we should parse URL parameters for configuration
+            console.log('[EclectechElement] Initial attributes:', 
+                Array.from(this.attributes).map(attr => attr.name).join(', '));
+    
+            // Only handle URL params on first load to prevent loops
+            if (window.location.href.includes('?config') && !window.__configProcessed) {
+                console.log('[EclectechElement] Detected configuration page, parsing parameters');
+                const params = EclectechElement.parseQueryParameters();
+                console.log(params);
+                // Use the parsed parameters for configuration
+                console.log('[EclectechElement] Configuration parameters:', params);
+                let config_params = params['features'];
+                
+                console.log(config_params);
+    
+                // Remove all existing attributes and clear cached HTML
+                this.removeAllAccessibilityAttributes();
+                
+                // Only set new attributes if config_params has items
+                if (config_params && config_params.length > 0) {
+                    console.log('[EclectechElement] Setting new attributes from config parameters:', config_params);
+                    config_params.forEach(feature => {
+                        this.setAttribute(feature, 'true');
+                    });
+                } else {
+                    console.log('[EclectechElement] No features found in config, all attributes removed');
+                }
+                
+                console.log('[EclectechElement] Final attributes:', Array.from(this.attributes).map(attr => attr.name).join(', '));
+                
+                // Mark config as processed to prevent loops
+                window.__configProcessed = true;
+            }
+            else {
+                console.log('[EclectechElement] No configuration page detected or already processed, using HTML attributes');
+            }
+            
+            // Collect active accessibility attributes from the element
+            const activeAttributes = [];
+            if (this.hasAttribute('enable-large-font')) {
+                activeAttributes.push('enable-large-font');
+            }
+            if (this.hasAttribute('enable-high-contrast')) {
+                activeAttributes.push('enable-high-contrast');
+            }
+            if (this.hasAttribute('enable-screen-reader')) {
+                activeAttributes.push('enable-screen-reader');
+            }
+    
+            // If no accessibility attributes are active, hide loading and exit
+            if (activeAttributes.length === 0) {
+                console.log('[EclectechElement] No active accessibility attributes found, skipping processing');
+                this.hideLoading();
+                this.isProcessing = false;
+                return;
+            }
+    
+            console.log('[EclectechElement] Active accessibility attributes:', activeAttributes);
+            
+            // Only check cached version if gemini is already initialized and we have attributes
+            if (window.__geminiInitialized && activeAttributes.length > 0) {
+                // Check if a cached version exists
+                let cachedHtml = localStorage.getItem('accessibilityHtml');
+                if (cachedHtml && cachedHtml.length > 100) {
+                    try {
+                        console.log('[EclectechElement] Using cached HTML for accessibility features');
+                        document.documentElement.innerHTML = cachedHtml;
+                        setTimeout(() => {
+                            this.initializeAccessButton();
+                            this.createLoadingOverlay();
+                        }, 100);
+                        this.hideLoading();
+                        this.isProcessing = false;
+                        return;
+                    } catch (error) {
+                        console.error('[EclectechElement] Error applying cached HTML:', error);
+                        localStorage.removeItem('accessibilityHtml');
+                    }
                 }
             }
+            
+            // If we got here, we need to process from scratch
+            this.showLoading();
+            await moduleLoadPromise; // Ensure the accessibility module is loaded
+    
+            console.log('[EclectechElement] Calling apply_changes with attributes:', activeAttributes);
+            const freshHtml = await apply_changes(this.renderedHTML, activeAttributes);
+            if (freshHtml) {
+                document.documentElement.innerHTML = freshHtml;
+                window.__geminiInitialized = true;
+                setTimeout(() => {
+                    this.initializeAccessButton();
+                    this.createLoadingOverlay();
+                    localStorage.setItem('accessibilityHtml', freshHtml);
+                    console.log('[EclectechElement] New HTML cached in localStorage');
+                }, 100);
+            } else {
+                console.error('[EclectechElement] apply_changes returned no HTML');
+            }
+    
+            this.hideLoading();
+        } catch (error) {
+            console.error('[EclectechElement] Error during processing:', error);
+            this.hideLoading();
+        } finally {
+            // Always reset processing flag
+            this.isProcessing = false;
         }
-        
-        // If we got here, we need to process from scratch
-        this.showLoading();
-        await moduleLoadPromise; // Ensure the accessibility module is loaded
-
-        console.log('[EclectechElement] Calling apply_changes with attributes:', activeAttributes);
-        const freshHtml = await apply_changes(this.renderedHTML, activeAttributes);
-        if (freshHtml) {
-            document.documentElement.innerHTML = freshHtml;
-            window.__geminiInitialized = true;
-            setTimeout(() => {
-                this.initializeAccessButton();
-                this.createLoadingOverlay();
-                localStorage.setItem('accessibilityHtml', freshHtml);
-                console.log('[EclectechElement] New HTML cached in localStorage');
-            }, 100);
-        } else {
-            console.error('[EclectechElement] apply_changes returned no HTML');
-        }
-
-        this.hideLoading();
     }
 
     initializeAccessButton() {
-        if (document.querySelector('.eclectech-access-button')) return;
+        // Always remove any existing button first to prevent duplicates
+        const existingButton = document.querySelector('.eclectech-access-button');
+        if (existingButton) {
+            existingButton.remove();
+        }
 
         // Create accessibility button container
         this.accessButton = document.createElement('div');
         this.accessButton.className = 'eclectech-access-button';
+        this.accessButton.setAttribute('data-eclectech-button', 'true'); // Add data attribute for easier querying
         
         // Set styles for the button
         this.accessButton.style.cssText = `
@@ -244,13 +293,8 @@ class EclectechElement extends HTMLElement {
             <span>Accessibility</span>
         `;
         
-        // Add event listener for click
-        this.accessButton.addEventListener('click', () => {
-            console.log('[EclectechElement] Accessibility button clicked');
-            this.openAccessibilityConfig();
-        });
-        
-        // Add hover effect
+        // We'll rely on event delegation for click handling via the document-level listener
+        // Add hover effect using inline styles
         this.accessButton.addEventListener('mouseenter', () => {
             this.accessButton.style.transform = 'translateY(-3px)';
         });
