@@ -43,20 +43,20 @@ class EqlectechElement extends HTMLElement {
         this.apiKey = this.getAttribute('api-key');
         if (!this.apiKey) {
             console.error('[EclectechElement] Missing required attribute: api-key. Gemini features will be disabled.');
-            // Optionally, disable/hide the button or show an error state
-            // For now, just log error and don't initialize
             return; // Stop processing if no key
         }
 
         // Initialize Gemini
+        console.time('[Eclectech] Gemini Initialization'); // Start timer
         try {
             initializeGemini(this.apiKey);
             this.isGeminiInitialized = true;
             console.log('[EclectechElement] Gemini initialized successfully.');
         } catch (error) {
             console.error('[EclectechElement] Failed to initialize Gemini:', error);
-            // Handle initialization failure, maybe disable features
             return; // Stop if initialization fails
+        } finally {
+            console.timeEnd('[Eclectech] Gemini Initialization'); // End timer
         }
 
         window.requestAnimationFrame(() => {
@@ -287,9 +287,9 @@ class EqlectechElement extends HTMLElement {
             
             const freshHtml = await apply_changes(baseHtml, activeAttributes);
             if (freshHtml) {
+                console.time('[Eclectech] DOM Update'); // Start timer
                 document.documentElement.innerHTML = freshHtml;
-                // Remove global flag
-                // window.__geminiInitialized = true;
+                console.timeEnd('[Eclectech] DOM Update'); // End timer
                 setTimeout(() => {
                     this.initializeAccessButton();
                     this.createLoadingOverlay();

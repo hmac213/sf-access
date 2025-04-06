@@ -1,4 +1,4 @@
-import { GoogleGenAI } from 'https://cdn.jsdelivr.net/npm/@google/genai@latest/+esm';
+import { GoogleGenAI } from '@google/genai';
 
 console.log('[Eclectech/gemini.js] Module loaded');
 
@@ -20,8 +20,8 @@ function initializeGemini(apiKey) {
 // Refined prompts for better adherence
 const attribute_instructions = {
   'enable-large-font': 'Increase the base font size of text elements for better readability. Apply this change minimally, affecting only font-size properties or related styles. Preserve all other styles, attributes, and HTML structure.',
-  'enable-sparse-text': 'Increase spacing between text elements (like lines, paragraphs, list items, headings) to reduce density. Adjust margins or padding where appropriate. Preserve all original content, font styles, colors, and overall HTML structure.',
-  'enable-high-contrast': 'Modify color and background-color properties to meet high contrast requirements (e.g., WCAG AA or AAA level, typically black/white or similar high-contrast pairs). Apply changes *only* to color-related CSS properties. Preserve all layout, fonts, and HTML structure.',
+  'enable-sparse-text': 'Increase spacing between text elements (like lines, paragraphs, list items, headings) and container elements (like divs) to reduce content density. Adjust margins or padding where appropriate. Preserve all original content, font styles, colors, and overall HTML structure.',
+  'enable-high-contrast': 'Modify color and background-color properties to meet high contrast requirements (e.g., WCAG AA or AAA level, typically black/white with other high contrast neon colors). Apply changes *only* to color-related CSS properties. Make sure all text contrasts with its background. Preserve all layout, fonts, and HTML structure.',
   'enable-screen-reader': 'Enhance the HTML for screen reader accessibility. Add `aria-label`, `aria-describedby`, `role` attributes, and semantic HTML elements where appropriate. Ensure images have descriptive `alt` text. Make *no visual changes* to the page layout, styling, or content.',
   'enable-live-subtitles': 'This attribute does not require HTML modification via Gemini. It is handled client-side.' // No Gemini prompt needed
 };
@@ -56,8 +56,9 @@ async function apply_changes(renderedHTML, attributes) {
   // console.log("System Instruction:", systemInstruction); // Optional: Log system instruction
 
   try {
+    console.time('[Eclectech] Gemini API Call'); // Start timer
     const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-2.5-pro-preview-03-25",
       contents: [{ role: "user", parts: [{ text: prompt }] }], // Use structured content format
       systemInstruction: { role: "system", parts: [{ text: systemInstruction }] }, // Pass system instruction separately
       generationConfig: {
@@ -66,14 +67,15 @@ async function apply_changes(renderedHTML, attributes) {
         stopSequences: [] // Explicitly clear stop sequences
       }
     });
+    console.timeEnd('[Eclectech] Gemini API Call'); // End timer normally
 
     // More robust response handling
     let modifiedHtml = "";
     // Accessing response correctly based on potential structure changes
     if (response && response.candidates && response.candidates[0] && response.candidates[0].content && response.candidates[0].content.parts && response.candidates[0].content.parts[0]) {
       modifiedHtml = response.candidates[0].content.parts[0].text;
-      // Re-introduce cleanup for markdown code fences as the model might still include them
-      modifiedHtml = modifiedHtml.replace(/^```html\\s*/im, '').replace(/```\\s*$/im, '').trim();
+      // Refined cleanup for markdown code fences (handles optional leading whitespace)
+      modifiedHtml = modifiedHtml.replace(/^\s*```html\s*/im, '').replace(/```\s*$/im, '').trim();
     } else {
       console.error("[Eclectech] Invalid response structure received from Gemini API:", response);
       throw new Error("Invalid response structure from Gemini API");
@@ -88,6 +90,7 @@ async function apply_changes(renderedHTML, attributes) {
 
     return modifiedHtml;
   } catch (error) {
+    console.timeEnd('[Eclectech] Gemini API Call'); // End timer also on error
     console.error(`[Eclectech] Error during combined Gemini API call:`, error);
     // Consider returning original HTML as a fallback on error
     // return renderedHTML;
