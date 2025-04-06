@@ -1,30 +1,25 @@
 {
-  "name": "eclectech",
-  "version": "1.0.0",
-  "description": "more accessible websites",
-  "keywords": [
-    "accessibility"
-  ],
-  "homepage": "https://github.com/hmac213/sf-access#readme",
-  "bugs": {
-    "url": "https://github.com/hmac213/sf-access/issues"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/hmac213/sf-access.git"
-  },
-  "license": "ISC",
-  "author": "Henry and Matthew",
-  "type": "commonjs",
+  "name": "eqlectech-accessibility",
+  "version": "0.1.0",
+  "description": "A custom element to apply accessibility transformations to a web page.",
   "main": "index.js",
+  "module": "index.js",
+  "type": "module",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "dependencies": {
-    "@google/genai": "^0.7.0"
-  },
-  "devDependencies": {
-    "http-server": "^14.1.1",
-    "live-server": "^1.2.2"
-  }
+  "keywords": [
+    "accessibility",
+    "web component",
+    "custom element",
+    "gemini",
+    "react"
+  ],
+  "author": "",
+  "license": "ISC",
+  "files": [
+    "index.js",
+    "gemini_calls/gemini.js",
+    "README.md"
+  ]
 }
