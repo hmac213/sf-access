@@ -1,5 +1,6 @@
 // Import statement moved outside class to ensure proper module loading
 let apply_changes;
+let subtitlesHandler;
 
 const moduleLoadPromise = import('./gemini_calls/gemini.js')
   .then(module => {
@@ -7,6 +8,14 @@ const moduleLoadPromise = import('./gemini_calls/gemini.js')
   })
   .catch(error => {
     console.error('[EclectechElement] Error loading module:', error);
+  });
+
+const subtitlesModulePromise = import('./subtitles.js')
+  .then(module => {
+    subtitlesHandler = module.default;
+  })
+  .catch(error => {
+    console.error('[EclectechElement] Error loading subtitles module:', error);
   });
 
 // Setup global event delegation for accessibility button
@@ -109,6 +118,11 @@ class EclectechElement extends HTMLElement {
         ];
         
         console.log('[EclectechElement] Removing all accessibility attributes');
+        
+        // If subtitles are enabled, clean them up first
+        if (this.hasAttribute('enable-live-subtitles') && subtitlesHandler) {
+            subtitlesHandler.cleanup();
+        }
         
         accessibilityAttributes.forEach(attr => {
             if (this.hasAttribute(attr)) {
@@ -246,53 +260,15 @@ class EclectechElement extends HTMLElement {
     
             this.hideLoading();
 
+            // Check if live subtitles are enabled
             if (activeAttributes.includes('enable-live-subtitles')) {
-                console.log("[EclectechElement] Adding live subtitles");
-                try {
-                    // Check for video element
-                    const video = document.querySelector('video');
-                    
-                    // Create or get the subtitles container
-                    let subtitlesDiv = document.getElementById('eclectech-subtitles');
-                    if (!subtitlesDiv) {
-                        console.log('[EclectechElement] Creating new subtitles container');
-                        subtitlesDiv = document.createElement('div');
-                        subtitlesDiv.id = 'eclectech-subtitles';
-                        subtitlesDiv.className = 'eclectech-subtitles-container';
-                        
-                        // Style the subtitles container
-                        subtitlesDiv.style.cssText = `
-                            position: fixed;
-                            bottom: 70px;
-                            left: 0;
-                            width: 100%;
-                            padding: 16px;
-                            background-color: rgba(0, 0, 0, 0.7);
-                            color: white;
-                            font-size: 20px;
-                            text-align: center;
-                            z-index: 9998;
-                            transition: opacity 0.3s;
-                            font-family: system-ui, -apple-system, sans-serif;
-                        `;
-                        
-                        // Add an initial message
-                        subtitlesDiv.innerHTML = '<p>Live subtitles will appear here when speaking is detected.</p>';
-                        
-                        // Add to the body
-                        document.body.appendChild(subtitlesDiv);
-                        console.log('[EclectechElement] Subtitles container added to DOM');
-                    } else {
-                        console.log('[EclectechElement] Using existing subtitles container');
-                    }
-                    
-                    // If there's a video element, we could set up video caption tracking
-                    if (video) {
-                        console.log('[EclectechElement] Video element found, setting up captions');
-                        // Here you would set up any video-specific caption handling
-                    } 
-                } catch (error) {
-                    console.error('[EclectechElement] Error adding live subtitles:', error);
+                console.log('[EclectechElement] Setting up live subtitles');
+                await subtitlesModulePromise; // Ensure subtitles module is loaded
+                if (subtitlesHandler) {
+                    // Initialize with the current element as context
+                    subtitlesHandler.setup(this);
+                } else {
+                    console.error('[EclectechElement] Subtitles module failed to load');
                 }
             }
         } catch (error) {
@@ -498,99 +474,6 @@ class EclectechElement extends HTMLElement {
             this.loadingOverlay.style.opacity = '0';
             this.loadingOverlay.style.visibility = 'hidden';
             console.log('[EclectechElement] Loading overlay hidden');
-        }
-    }
-
-    // Initialize speech recognition for live subtitles
-    initializeSpeechRecognition(subtitlesDiv) {
-        if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-            console.log('[EclectechElement] Speech recognition not supported in this browser');
-            subtitlesDiv.innerHTML = '<p>Speech recognition is not supported in this browser.</p>';
-            return;
-        }
-        
-        try {
-            // Create speech recognition instance
-            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-            const recognition = new SpeechRecognition();
-            
-            // Configure speech recognition
-            recognition.continuous = true;
-            recognition.interimResults = true;
-            recognition.lang = 'en-US'; // Default to English
-            
-            // Store for later cleanup
-            this.speechRecognition = recognition;
-            
-            // Create paragraph for results
-            let p = document.createElement('p');
-            subtitlesDiv.innerHTML = '';
-            subtitlesDiv.appendChild(p);
-            
-            // Listen for results
-            recognition.addEventListener('result', (e) => {
-                const results = Array.from(e.results);
-                const transcript = results
-                    .map(result => result[0])
-                    .map(result => result.transcript)
-                    .join('');
-                
-                // Update the subtitles div with the transcript
-                p.textContent = transcript;
-                
-                // If it's a final result, start a new paragraph
-                if (results.some(result => result.isFinal)) {
-                    p = document.createElement('p');
-                    subtitlesDiv.appendChild(p);
-                    
-                    // Keep only the last 3 paragraphs to avoid clutter
-                    const paragraphs = subtitlesDiv.querySelectorAll('p');
-                    if (paragraphs.length > 3) {
-                        subtitlesDiv.removeChild(paragraphs[0]);
-                    }
-                }
-            });
-            
-            // Handle errors
-            recognition.addEventListener('error', (e) => {
-                console.error('[EclectechElement] Speech recognition error:', e);
-                p.textContent = 'Speech recognition error occurred.';
-            });
-            
-            // Restart when it ends
-            recognition.addEventListener('end', () => {
-                if (this.hasAttribute('enable-live-subtitles')) {
-                    recognition.start();
-                }
-            });
-            
-            // Start recognition
-            recognition.start();
-            console.log('[EclectechElement] Speech recognition started');
-            
-        } catch (error) {
-            console.error('[EclectechElement] Error initializing speech recognition:', error);
-            subtitlesDiv.innerHTML = '<p>Error initializing speech recognition.</p>';
-        }
-    }
-    
-    // Cleanup method to stop speech recognition when disabled
-    cleanupSpeechRecognition() {
-        if (this.speechRecognition) {
-            try {
-                this.speechRecognition.stop();
-                console.log('[EclectechElement] Speech recognition stopped');
-            } catch (error) {
-                console.error('[EclectechElement] Error stopping speech recognition:', error);
-            }
-            this.speechRecognition = null;
-        }
-        
-        // Remove subtitles div if it exists
-        const subtitlesDiv = document.getElementById('eclectech-subtitles');
-        if (subtitlesDiv) {
-            subtitlesDiv.remove();
-            console.log('[EclectechElement] Subtitles container removed');
         }
     }
 }
