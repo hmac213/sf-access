@@ -21,7 +21,8 @@
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
-    "@google/genai": "^0.7.0"
+    "@google/genai": "^0.7.0",
+    "microsoft-cognitiveservices-speech-sdk": "^1.43.1"
   },
   "devDependencies": {
     "http-server": "^14.1.1",

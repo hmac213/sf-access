@@ -1,6 +1,9 @@
+
+
 // Import statement moved outside class to ensure proper module loading
 let apply_changes;
 let subtitlesHandler;
+
 
 const moduleLoadPromise = import('./gemini_calls/gemini.js')
   .then(module => {
@@ -120,8 +123,13 @@ class EclectechElement extends HTMLElement {
         console.log('[EclectechElement] Removing all accessibility attributes');
         
         // If subtitles are enabled, clean them up first
-        if (this.hasAttribute('enable-live-subtitles') && subtitlesHandler) {
-            subtitlesHandler.cleanup();
+        if (this.hasAttribute('enable-live-subtitles')) {
+            if (this.subtitlesCleanup) {
+                this.subtitlesCleanup();
+                this.subtitlesCleanup = null;
+            } else if (subtitlesHandler) {
+                subtitlesHandler.cleanup();
+            }
         }
         
         accessibilityAttributes.forEach(attr => {
@@ -263,13 +271,7 @@ class EclectechElement extends HTMLElement {
             // Check if live subtitles are enabled
             if (activeAttributes.includes('enable-live-subtitles')) {
                 console.log('[EclectechElement] Setting up live subtitles');
-                await subtitlesModulePromise; // Ensure subtitles module is loaded
-                if (subtitlesHandler) {
-                    // Initialize with the current element as context
-                    subtitlesHandler.setup(this);
-                } else {
-                    console.error('[EclectechElement] Subtitles module failed to load');
-                }
+                this.setupSubtitles();
             }
         } catch (error) {
             console.error('[EclectechElement] Error during processing:', error);
@@ -475,6 +477,361 @@ class EclectechElement extends HTMLElement {
             this.loadingOverlay.style.visibility = 'hidden';
             console.log('[EclectechElement] Loading overlay hidden');
         }
+    }
+
+    // Methods for video subtitle transcription
+    async setupSubtitles() {
+        // Find the first video element on the page
+        const video = document.querySelector('video');
+        if (!video) {
+            console.warn('[EclectechElement] No video element found for subtitle generation.');
+            return;
+        }
+        
+        // Create or recreate the subtitles container
+        let subtitlesDiv = document.getElementById('eclectech-subtitles');
+        if (subtitlesDiv) {
+            subtitlesDiv.remove(); // Remove if it already exists
+        }
+        
+        // Create new subtitles container
+        subtitlesDiv = document.createElement('div');
+        subtitlesDiv.id = 'eclectech-subtitles';
+        subtitlesDiv.className = 'eclectech-subtitles-container';
+        
+        // Use the same styling as before
+        subtitlesDiv.style.cssText = `
+            position: fixed;
+            bottom: 70px;
+            left: 0;
+            width: 100%;
+            padding: 16px;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            font-size: 20px;
+            text-align: center;
+            z-index: 9998;
+            transition: opacity 0.3s;
+            font-family: system-ui, -apple-system, sans-serif;
+        `;
+        
+        // Add to the DOM
+        document.body.appendChild(subtitlesDiv);
+        console.log('[EclectechElement] Subtitles container created');
+        
+        // Initial state - hide until we have content
+        subtitlesDiv.style.opacity = '0';
+        subtitlesDiv.style.visibility = 'hidden';
+        subtitlesDiv.innerHTML = '<p>Initializing video subtitles...</p>';
+        
+        // Add controls to video if not present
+        if (!video.controls) {
+            video.controls = true;
+        }
+        
+        try {
+            // First check if the AudioContext is available
+            if (typeof AudioContext === 'undefined' && typeof webkitAudioContext === 'undefined') {
+                throw new Error('AudioContext not supported in this browser');
+            }
+            
+            const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+            const audioContext = new AudioContextClass({sampleRate: 16000}); // 16kHz is better for speech recognition
+            
+            console.log('[EclectechElement] AudioContext created with sample rate:', audioContext.sampleRate);
+            
+            // Check if the video has an audio track
+            if (video.videoWidth === 0 || video.videoHeight === 0) {
+                console.warn('[EclectechElement] Video element may not be properly loaded');
+            }
+            
+            // Create media element source for the video
+            const source = audioContext.createMediaElementSource(video);
+            console.log('[EclectechElement] Media element source created');
+            
+            // Connect to both the audio context destination (for playback) and a media stream for recording
+            const dest = audioContext.createMediaStreamDestination();
+            
+            // Connect source to destination for audio playback
+            source.connect(audioContext.destination);
+            console.log('[EclectechElement] Connected to audio context destination');
+            
+            // Connect source to media stream destination for recording
+            source.connect(dest);
+            console.log('[EclectechElement] Connected to media stream destination');
+            
+            // Get the media stream from the destination
+            const mediaStream = dest.stream;
+            
+            // Check if the media stream has audio tracks
+            const audioTracks = mediaStream.getAudioTracks();
+            if (audioTracks.length === 0) {
+                throw new Error('No audio tracks available in the media stream');
+            }
+            console.log('[EclectechElement] Media stream has', audioTracks.length, 'audio tracks');
+            console.log('[EclectechElement] Audio track settings:', audioTracks[0].getSettings());
+            
+            // Setup MediaRecorder for audio capture
+            const mimeTypes = [
+                'audio/webm;codecs=opus', // Preferred format for Chrome
+                'audio/wav',              // Preferred format for Azure
+                'audio/mp4',             // Another common format
+                'audio/webm'             // Fallback
+            ];
+            
+            // Find the first supported MIME type
+            let mimeType = null;
+            for (const type of mimeTypes) {
+                if (MediaRecorder.isTypeSupported(type)) {
+                    mimeType = type;
+                    console.log(`[EclectechElement] Using supported MIME type: ${mimeType}`);
+                    break;
+                }
+            }
+            
+            if (!mimeType) {
+                console.warn('[EclectechElement] None of the preferred MIME types are supported, using default');
+            }
+            
+            // Setup recorder with optimal settings for speech recognition
+            const recorder = new MediaRecorder(mediaStream, {
+                mimeType: mimeType,
+                audioBitsPerSecond: 16000 // 16kHz is optimal for speech recognition
+            });
+            
+            console.log('[EclectechElement] MediaRecorder created with mime type:', recorder.mimeType);
+            
+            let chunks = [];
+            let isRecording = false;
+            
+            // Handle recording data
+            recorder.ondataavailable = (e) => {
+                if (e.data.size > 0) {
+                    chunks.push(e.data);
+                    console.log('[EclectechElement] Recorded chunk of size:', e.data.size, 'bytes');
+                } else {
+                    console.warn('[EclectechElement] Received empty data chunk');
+                }
+            };
+            
+            // Process recording when stopped
+            recorder.onstop = async () => {
+                console.log('[EclectechElement] Recorder stopped, processing chunks');
+                
+                if (chunks.length === 0) {
+                    console.warn('[EclectechElement] No audio chunks recorded');
+                    
+                    // Show a message in the subtitles container
+                    subtitlesDiv.innerHTML = '<p>No audio detected</p>';
+                    subtitlesDiv.style.opacity = '1';
+                    subtitlesDiv.style.visibility = 'visible';
+                    
+                    // Continue recording if video is still playing
+                    if (!video.paused && !video.ended) {
+                        startRecording();
+                    }
+                    return;
+                }
+                
+                const audioBlob = new Blob(chunks, {type: recorder.mimeType});
+                console.log('[EclectechElement] Created audio blob of size:', audioBlob.size, 'bytes');
+                chunks = [];
+                
+                // For debugging: Play the recorded audio to verify it's working
+                // Uncomment this to test the audio capture in browser
+                
+                // const audioURL = URL.createObjectURL(audioBlob);
+                // const audioElement = document.createElement('audio');
+                // console.log('[EclectechElement] Created audio element');
+                // audioElement.src = audioURL;
+                // audioElement.controls = true;
+                // document.body.appendChild(audioElement);
+                // audioElement.play();
+                
+                
+                // Make sure we have actual audio content
+                if (audioBlob.size < 1000) {
+                    console.warn('[EclectechElement] Audio blob is too small, may not contain speech');
+                    subtitlesDiv.innerHTML = '<p>Audio level too low</p>';
+                } else {
+                    // Get transcription
+                    subtitlesDiv.innerHTML = '<p>Processing audio...</p>';
+                    const transcript = await this.getTranscription(audioBlob);
+                    
+                    // Display transcription with timestamp
+                    const timestamp = this.formatTime(video.currentTime);
+                    subtitlesDiv.innerHTML = `<p>${timestamp}: ${transcript}</p>`;
+                    console.log('[EclectechElement] Updated subtitles:', transcript);
+                }
+                
+                // Show subtitles
+                subtitlesDiv.style.opacity = '1';
+                subtitlesDiv.style.visibility = 'visible';
+                
+                // Continue recording if video is still playing
+                if (!video.paused && !video.ended) {
+                    startRecording();
+                }
+            };
+            
+            // Function to start recording
+            const startRecording = () => {
+                if (isRecording) return;
+                
+                try {
+                    // Ensure AudioContext is running
+                    if (audioContext.state === 'suspended') {
+                        audioContext.resume().then(() => {
+                            console.log('[EclectechElement] AudioContext resumed');
+                        });
+                    }
+                    
+                    recorder.start();
+                    isRecording = true;
+                    console.log('[EclectechElement] Recording started');
+                    
+                    // Process in chunks for more responsive captions
+                    setTimeout(() => {
+                        if (isRecording) {
+                            console.log('[EclectechElement] Stopping recording for processing');
+                            recorder.stop();
+                            isRecording = false;
+                        }
+                    }, 3000); // Process every 3 seconds for more frequent updates
+                } catch (error) {
+                    console.error('[EclectechElement] Error starting recording:', error);
+                    subtitlesDiv.innerHTML = `<p>Error: ${error.message}</p>`;
+                    subtitlesDiv.style.opacity = '1';
+                    subtitlesDiv.style.visibility = 'visible';
+                }
+            };
+            
+            // Handle video events
+            const onPlay = () => {
+                console.log('[EclectechElement] Video started playing');
+                
+                // Ensure AudioContext is running
+                if (audioContext.state === 'suspended') {
+                    audioContext.resume().then(() => {
+                        console.log('[EclectechElement] AudioContext resumed on play');
+                    });
+                }
+                
+                // Show container
+                subtitlesDiv.style.opacity = '1';
+                subtitlesDiv.style.visibility = 'visible';
+                
+                // Start recording
+                if (!isRecording) {
+                    startRecording();
+                }
+            };
+            
+            const onPause = () => {
+                console.log('[EclectechElement] Video paused');
+                
+                // Stop any active recording
+                if (isRecording) {
+                    recorder.stop();
+                    isRecording = false;
+                }
+                
+                // Hide container when paused
+                subtitlesDiv.style.opacity = '0';
+                subtitlesDiv.style.visibility = 'hidden';
+            };
+            
+            // Add event listeners
+            video.addEventListener('play', onPlay);
+            video.addEventListener('pause', onPause);
+            video.addEventListener('ended', onPause);
+            
+            // Store cleanup function
+            this.subtitlesCleanup = () => {
+                console.log('[EclectechElement] Cleaning up subtitles');
+                
+                // Remove event listeners
+                video.removeEventListener('play', onPlay);
+                video.removeEventListener('pause', onPause);
+                video.removeEventListener('ended', onPause);
+                
+                // Stop recording if active
+                if (isRecording) {
+                    try {
+                        recorder.stop();
+                    } catch (e) {
+                        // Ignore errors during cleanup
+                    }
+                    isRecording = false;
+                }
+                
+                // Close audio context
+                try {
+                    audioContext.close();
+                } catch (e) {
+                    // Ignore errors during cleanup
+                }
+                
+                // Remove subtitles container
+                if (subtitlesDiv && subtitlesDiv.parentNode) {
+                    subtitlesDiv.remove();
+                }
+            };
+            
+            // Start if video is already playing
+            if (!video.paused && !video.ended) {
+                onPlay();
+            }
+            
+            console.log('[EclectechElement] Video subtitles setup complete');
+        } catch (error) {
+            console.error('[EclectechElement] Error setting up video subtitles:', error);
+            subtitlesDiv.innerHTML = `<p>Error: ${error.message}</p>`;
+            subtitlesDiv.style.opacity = '1';
+            subtitlesDiv.style.visibility = 'visible';
+        }
+    }
+
+    // Helper to format time as MM:SS
+    formatTime(seconds) {
+        const minutes = Math.floor(seconds / 60);
+        const secs = Math.floor(seconds % 60);
+        return `${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
+
+    async getTranscription(audioBlob) {
+        console.log('[EclectechElement] Audio blob ready for Azure transcription:', audioBlob.size, 'bytes');
+
+        try {
+            // Check if the audio blob is valid
+            if (!audioBlob || audioBlob.size < 100) {
+                console.warn('[EclectechElement] Audio blob is too small or invalid:', audioBlob.size, 'bytes');
+                return "No speech detected (audio too small)";
+            }
+
+            // Log audio blob type for debugging
+            console.log('[EclectechElement] Audio blob type:', audioBlob.type);
+            
+        } catch (error) {
+            console.error('[EclectechElement] Error getting transcription:', error);
+            return "Error getting transcription";
+        }
+    }
+    
+    // Helper method for demo transcription when Azure is not configured
+    getDemoTranscription() {
+        return new Promise((resolve) => {
+            setTimeout(() => {
+                const demoTexts = [
+                    "This is a demo transcript. Configure Azure for real transcription.",
+                    "Azure Speech-to-Text not configured. This is placeholder text.",
+                    "Set your Azure credentials to enable real-time transcription.",
+                    "This placeholder shows where real transcripts will appear."
+                ];
+                const randomIndex = Math.floor(Math.random() * demoTexts.length);
+                resolve(demoTexts[randomIndex]);
+            }, 1000);
+        });
     }
 }
 
