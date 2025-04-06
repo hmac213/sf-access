@@ -1,6 +1,6 @@
 {
   "name": "eqlectech-accessibility",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "A custom element to apply accessibility transformations to a web page.",
   "main": "index.js",
   "module": "index.js",

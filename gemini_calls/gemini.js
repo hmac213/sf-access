@@ -19,7 +19,7 @@ function initializeGemini(apiKey) {
 
 // Refined prompts for better adherence
 const attribute_instructions = {
-  'enable-large-font': 'Increase the base font size of text elements for better readability. Apply this change minimally, affecting only font-size properties or related styles. Preserve all other styles, attributes, and HTML structure.',
+  'enable-large-font': 'Increase the base font size of ALL text elements for better readability. Apply this change minimally, affecting only font-size properties or related styles. The change should be noticeable. Preserve all other styles, attributes, and HTML structure.',
   'enable-sparse-text': 'Increase spacing between text elements (like lines, paragraphs, list items, headings) and container elements (like divs) to reduce content density. Adjust margins or padding where appropriate. Preserve all original content, font styles, colors, and overall HTML structure.',
   'enable-high-contrast': 'Modify color and background-color properties to meet high contrast requirements (e.g., WCAG AA or AAA level, typically black/white with other high contrast neon colors). Apply changes *only* to color-related CSS properties. Make sure all text contrasts with its background. Preserve all layout, fonts, and HTML structure.',
   'enable-screen-reader': 'Enhance the HTML for screen reader accessibility. Add `aria-label`, `aria-describedby`, `role` attributes, and semantic HTML elements where appropriate. Ensure images have descriptive `alt` text. Make *no visual changes* to the page layout, styling, or content.',
